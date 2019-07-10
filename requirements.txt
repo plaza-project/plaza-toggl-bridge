@@ -1,0 +1,8 @@
+# Toggl
+TogglPy
+
+# Plaza
+git+https://gitlab.com/plaza-project/bridges/python-plaza-lib
+
+# XDG
+xdg
