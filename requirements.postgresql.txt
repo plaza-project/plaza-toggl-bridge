@@ -8,7 +8,7 @@ git+https://gitlab.com/plaza-project/bridges/python-plaza-lib
 SQLAlchemy
 
 # Postgres support
-# psycopg2 installed using system package manager
+psycopg2-binary
 
 # XDG
 xdg
