@@ -18,7 +18,7 @@ from plaza_service import (
 from toggl.TogglPy import Toggl
 
 from plaza_toggl_service import config
-from plaza_toggl_service.storage import sqlite_storage
+from plaza_toggl_service import storage
 
 
 class Registerer(FormBasedServiceRegistration):
@@ -155,5 +155,5 @@ if __name__ == "__main__":
 
     bridge_endpoint = config.get_bridge_endpoint()
 
-    service = TogglService(sqlite_storage.get_default(), bridge_endpoint)
+    service = TogglService(storage.get_engine(), bridge_endpoint)
     service.run()
