@@ -17,8 +17,11 @@ from plaza_service import (
 )
 from toggl.TogglPy import Toggl
 
-from plaza_toggl_service import config
-from plaza_toggl_service import storage
+from plaza_toggl_service import (
+    config,
+    storage,
+    assets,
+)
 
 
 class Registerer(FormBasedServiceRegistration):
