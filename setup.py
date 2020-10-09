@@ -11,7 +11,7 @@ setup(name='plaza-toggl-service',
       include_package_data=True,
       install_requires = [
           'togglpy',
-          'plaza_service',
+          'programaker_bridge',
           'xdg',
       ],
       zip_safe=False)
