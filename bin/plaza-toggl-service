@@ -3,23 +3,24 @@
 import logging
 import sys
 import json
-from plaza_service import (
-    PlazaService,
-    ServiceConfiguration,
-    ServiceBlock,
-    BlockArgument,
-    BlockContext,
-    DynamicBlockArgument,
-    VariableBlockArgument,
-    BlockType,
-    VariableClass,
+import os
+import traceback
+
+from plaza_bridge import (
+    PlazaBridge,
     FormBasedServiceRegistration,
+    BlockArgument,
+    CollectionBlockArgument,
 )
 from toggl.TogglPy import Toggl
 
-from plaza_toggl_service import config
-from plaza_toggl_service import storage
+from plaza_toggl_service import (
+    config,
+    storage,
+    assets,
+)
 
+IS_PUBLIC = os.getenv('TOGGL_PUBLIC_BRIDGE', '0') in ('1', 't', 'true')
 
 class Registerer(FormBasedServiceRegistration):
     def __init__(self, *args, **kwargs):
@@ -34,30 +35,16 @@ class Registerer(FormBasedServiceRegistration):
         See <a href="https://www.toggl.com/app/profile">your toggl profile page</a> to get an access token
         """
 
-    async def register(self, data, extra_data):
+    def register(self, data, extra_data):
         print(
             "User {} is registered with: {}".format(
                 extra_data.user_id, json.dumps(data["form"], indent=4)
             )
         )
 
-        return self.service.register(
-            extra_data.user_id, data["form"]["token"]
-        )
+        plaza_user_id = extra_data.user_id
+        token = data["form"]["token"]
 
-
-class TogglService(PlazaService):
-    def __init__(self, storage, *args, **kwargs):
-        PlazaService.__init__(self, *args, **kwargs)
-        self.storage = storage
-        self.registerer = Registerer(self)
-        self.SUPPORTED_FUNCTIONS = {
-            "stop_counter": self.stop_counter,
-            "start_counter": self.start_counter,
-        }
-        self.SUPPORTED_CALLBACKS = {"get_toggl_accounts": self.get_toggl_accounts}
-
-    def register(self, plaza_user_id, token):
         toggl = Toggl()
         toggl.setAPIKey(token)
 
@@ -65,7 +52,7 @@ class TogglService(PlazaService):
         user_id = user_info['data']['id']
         username = user_info['data']['email']
 
-        self.storage.register_user(
+        STORAGE.register_user(
             {
                 "user_id": user_id,
                 "token": token,
@@ -73,87 +60,79 @@ class TogglService(PlazaService):
             },
             plaza_user_id,
         )
+
         return True
 
-    async def stop_counter(self, user_workspace_id, extra_data):
-        user_id, workspace_id = user_workspace_id.split('/', 1)
-        user = self.storage.get_toggl_user_from_id(user_id)
+
+
+bridge = PlazaBridge(name="Toggl",
+                     is_public=IS_PUBLIC,
+                     icon=assets.open_icon(),
+                     endpoint=config.get_bridge_endpoint(),
+                     token=config.get_auth_token(),
+                     collections=['workspaces'],
+                     allow_multiple_connections=False)
+
+registerer = Registerer(bridge=bridge)
+bridge.registerer = registerer
+
+STORAGE = storage.get_engine()
+WORKSPACE_COLLECTION = bridge.collections.workspaces
+
+@WORKSPACE_COLLECTION.getter
+def get_workspaces(user_id, extra_data):
+    results = {}
+    for user in STORAGE.get_toggl_users_from_plaza_id(extra_data.user_id):
         toggl = Toggl()
         toggl.setAPIKey(user["token"])
-        current_time_entry = toggl.currentRunningTimeEntry()
-        if current_time_entry is None or current_time_entry.get('data', None) is None:
-            return False
-        toggl.stopTimeEntry(current_time_entry['data']['id'])
-        return True
 
-    async def start_counter(self, user_workspace_id, description, extra_data):
-        user_id, workspace_id = user_workspace_id.split('/', 1)
-        user = self.storage.get_toggl_user_from_id(user_id)
-        toggl = Toggl()
-        toggl.setAPIKey(user["token"])
-        toggl.startTimeEntry(description)
+        for workspace in toggl.getWorkspaces():
+            results[str(user["user_id"]) + "/" + str(workspace["id"])] = {
+                "name": workspace["name"]
+            }
 
-    async def handle_call(self, function_name, arguments, extra_data):
-        logging.info(
-            "{}({}) # {}".format(
-                function_name, ", ".join(arguments), extra_data.user_id
-            )
-        )
-        return await self.SUPPORTED_FUNCTIONS[function_name](*arguments, extra_data)
+    return results
 
-    async def handle_data_callback(self, callback_name, extra_data):
-        logging.info("GET {} # {}".format(callback_name, extra_data.user_id))
-        return await self.SUPPORTED_CALLBACKS[callback_name](callback_name, extra_data)
 
-    async def get_toggl_accounts(self, _callback_name, extra_data):
-        results = {}
-        for user in self.storage.get_toggl_users_from_plaza_id(extra_data.user_id):
-            toggl = Toggl()
-            toggl.setAPIKey(user["token"])
+@bridge.operation(id='stop_counter',
+                  message="Stop Toggl counter on %1",
+                  arguments=[
+                      CollectionBlockArgument(WORKSPACE_COLLECTION),
+                  ])
+def stop_counter(user_workspace_id, _extra_data):
+    user_id, _workspace_id = user_workspace_id.split('/', 1)
+    user = STORAGE.get_toggl_user_from_id(user_id)
+    toggl = Toggl()
+    toggl.setAPIKey(user["token"])
+    current_time_entry = toggl.currentRunningTimeEntry()
+    if current_time_entry is None or current_time_entry.get('data', None) is None:
+        return False
+    toggl.stopTimeEntry(current_time_entry['data']['id'])
+    return True
 
-            for workspace in toggl.getWorkspaces():
-                results[str(user["user_id"]) + "/" + str(workspace["id"])] = {
-                    "name": workspace["name"]
-                }
 
-        return results
-
-    def handle_configuration(self):
-        return ServiceConfiguration(
-            service_name="Toggl",
-            is_public=True,
-            registration=self.registerer,
-            blocks=[
-                ServiceBlock(
-                    id="stop_counter",
-                    function_name="stop_counter",
-                    message="Stop toggl counter on %1",
-                    arguments=[
-                        DynamicBlockArgument(str, "get_toggl_accounts"),
-                    ],
-                    block_type=BlockType.OPERATION,
-                    block_result_type=None,  # TODO: change
-                ),
-                ServiceBlock(
-                    id="start_counter",
-                    function_name="start_counter",
-                    message="Start toggl counter on %1 with description: %2",
-                    arguments=[
-                        DynamicBlockArgument(str, "get_toggl_accounts"),
-                        BlockArgument(str, "Task name"),
-                    ],
-                    block_type=BlockType.OPERATION,
-                    block_result_type=None,  # TODO: change
-                ),
-            ],
-        )
-
+@bridge.operation(id="start_counter",
+                  message="Start toggl counter on %1 with description: %2",
+                  arguments=[
+                      CollectionBlockArgument(WORKSPACE_COLLECTION),
+                      BlockArgument(str, "Task name"),
+                  ])
+def start_counter(user_workspace_id, description, _extra_data):
+    user_id, _workspace_id = user_workspace_id.split('/', 1)
+    user = STORAGE.get_toggl_user_from_id(user_id)
+    toggl = Toggl()
+    toggl.setAPIKey(user["token"])
+    toggl.startTimeEntry(description)
 
 if __name__ == "__main__":
-    logging.basicConfig()
-    logging.getLogger().setLevel(logging.DEBUG)
+    logging.basicConfig(
+        format="%(asctime)s - %(levelname)s [%(filename)s] %(message)s")
+    logging.getLogger().setLevel(logging.INFO)
 
-    bridge_endpoint = config.get_bridge_endpoint()
+    try:
+        bridge.run()
+    except Exception:
+        traceback.print_exc()
+        os._exit(1)
 
-    service = TogglService(storage.get_engine(), bridge_endpoint)
-    service.run()
+    os._exit(0)  # Force stopping after the bridge ends
