@@ -6,15 +6,15 @@ import json
 import os
 import traceback
 
-from plaza_bridge import (
-    PlazaBridge,
+from programaker_bridge import (
+    ProgramakerBridge,
     FormBasedServiceRegistration,
     BlockArgument,
     CollectionBlockArgument,
 )
 from toggl.TogglPy import Toggl
 
-from plaza_toggl_service import (
+from programaker_toggl_service import (
     config,
     storage,
     assets,
@@ -42,7 +42,7 @@ class Registerer(FormBasedServiceRegistration):
             )
         )
 
-        plaza_user_id = extra_data.user_id
+        programaker_user_id = extra_data.user_id
         token = data["form"]["token"]
 
         toggl = Toggl()
@@ -58,20 +58,20 @@ class Registerer(FormBasedServiceRegistration):
                 "token": token,
                 "username": username,
             },
-            plaza_user_id,
+            programaker_user_id,
         )
 
         return True
 
 
 
-bridge = PlazaBridge(name="Toggl",
-                     is_public=IS_PUBLIC,
-                     icon=assets.open_icon(),
-                     endpoint=config.get_bridge_endpoint(),
-                     token=config.get_auth_token(),
-                     collections=['workspaces'],
-                     allow_multiple_connections=False)
+bridge = ProgramakerBridge(name="Toggl",
+                           is_public=IS_PUBLIC,
+                           icon=assets.open_icon(),
+                           endpoint=config.get_bridge_endpoint(),
+                           token=config.get_auth_token(),
+                           collections=['workspaces'],
+                           allow_multiple_connections=False)
 
 registerer = Registerer(bridge=bridge)
 bridge.registerer = registerer
@@ -82,7 +82,7 @@ WORKSPACE_COLLECTION = bridge.collections.workspaces
 @WORKSPACE_COLLECTION.getter
 def get_workspaces(user_id, extra_data):
     results = {}
-    for user in STORAGE.get_toggl_users_from_plaza_id(extra_data.user_id):
+    for user in STORAGE.get_toggl_users_from_programaker_id(extra_data.user_id):
         toggl = Toggl()
         toggl.setAPIKey(user["token"])
 
