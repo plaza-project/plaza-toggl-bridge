@@ -6,7 +6,13 @@ import sqlalchemy
 
 from . import models
 
-DB_PATH_ENV = 'PLAZA_TOGGL_BRIDGE_DB_PATH'
+
+DB_PATH_ENV = 'TOGGL_BRIDGE_DB_PATH'
+
+if os.getenv(DB_PATH_ENV, None) is None:
+    # Support old environment variable
+    DB_PATH_ENV = 'PLAZA_TOGGL_BRIDGE_DB_PATH'
+
 
 if os.getenv(DB_PATH_ENV, None) is None:
     _DATA_DIRECTORY = os.path.join(XDG_DATA_HOME, "plaza", "bridges", "toggl")
@@ -54,42 +60,42 @@ class StorageEngine:
         return result.inserted_primary_key[0]
 
 
-    def _get_or_add_plaza_user(self, conn, plaza_user):
+    def _get_or_add_programaker_user(self, conn, programaker_user):
         check = conn.execute(
             sqlalchemy.select([models.PlazaUsers.c.id])
-            .where(models.PlazaUsers.c.plaza_user_id == plaza_user)
+            .where(models.PlazaUsers.c.plaza_user_id == programaker_user)
         ).fetchone()
 
         if check is not None:
             return check.id
 
-        insert = models.PlazaUsers.insert().values(plaza_user_id=plaza_user)
+        insert = models.PlazaUsers.insert().values(plaza_user_id=programaker_user)
         result = conn.execute(insert)
         return result.inserted_primary_key[0]
 
-    def register_user(self, toggl_user, plaza_user):
+    def register_user(self, toggl_user, programaker_user):
         with self._connect_db() as conn:
             toggl_id = self._get_or_add_toggl_user(conn, toggl_user)
-            plaza_id = self._get_or_add_plaza_user(conn, plaza_user)
+            programaker_id = self._get_or_add_programaker_user(conn, programaker_user)
 
             check = conn.execute(
                 sqlalchemy.select([models.PlazaUsersInToggl.c.plaza_id])
                 .where(
                     sqlalchemy.and_(
-                        models.PlazaUsersInToggl.c.plaza_id == plaza_id,
+                        models.PlazaUsersInToggl.c.plaza_id == programaker_id,
                         models.PlazaUsersInToggl.c.toggl_id == toggl_id))
             ).fetchone()
 
             if check is not None:
                 return
 
-            insert = models.PlazaUsersInToggl.insert().values(plaza_id=plaza_id,
+            insert = models.PlazaUsersInToggl.insert().values(plaza_id=programaker_id,
                                                               toggl_id=toggl_id)
             conn.execute(insert)
 
-    def get_toggl_users_from_plaza_id(self, plaza_user):
+    def get_toggl_users_from_programaker_id(self, programaker_user):
         with self._connect_db() as conn:
-            plaza_id = self._get_or_add_plaza_user(conn, plaza_user)
+            programaker_id = self._get_or_add_programaker_user(conn, programaker_user)
 
             join = sqlalchemy.join(models.TogglUserRegistration, models.PlazaUsersInToggl,
                                    models.TogglUserRegistration.c.id
@@ -101,7 +107,7 @@ class StorageEngine:
                     models.TogglUserRegistration.c.toggl_user_name,
                 ])
                 .select_from(join)
-                .where(models.PlazaUsersInToggl.c.plaza_id == plaza_id)
+                .where(models.PlazaUsersInToggl.c.plaza_id == programaker_id)
             ).fetchall()
             return [
                 dict(zip(["user_id", "token", "user_name"], row))

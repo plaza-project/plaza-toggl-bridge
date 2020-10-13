@@ -1,8 +1,5 @@
 FROM python:3-alpine
 
-# Note that git is not uninstalled later, as it's needed for the
-#  installation of the requirements.
-#
 # PsycoPG is the driver for PostgreSQL installations
 #  (used through SqlAlchemy.)
 
@@ -15,4 +12,4 @@ RUN apk add --no-cache git libpq postgresql-dev build-base \
 ADD . /app
 RUN pip install -e /app
 
-CMD plaza-toggl-service
+CMD programaker-toggl-service
